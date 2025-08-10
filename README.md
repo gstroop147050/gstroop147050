@@ -1,16 +1,21 @@
-## Hi there 👋
+Jekyll Themes
+=============
 
-<!--
-**gstroop147050/gstroop147050** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+A directory of the best-looking themes for Jekyll blogs
 
-Here are some ideas to get you started:
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+Submitting a Theme
+------------------
+
+Have a theme you want to share?
+
+* Fork the site on GitHub
+* Create a new post in the `_posts` directory and fill out the relevant YAML fields
+* Make a 250x200 thumbnail and drop it in the thumbnails directory. List its filename in the post's markdown file.
+* Test it out, then push your changes up and open a pull request.
+
+
+License
+-------
+
+The contents of this repository are licensed under the [GNU Public License.](http://www.gnu.org/licenses/gpl-3.0.html)
