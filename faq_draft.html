@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FAQs</title>
+  <style>
+    :root{
+      --bg:#0b1020; --card:#111731; --text:#e8ecf3; --muted:#a9b3c7; --accent:#7aa2ff; --accent-2:#9bdbff; --ring:rgba(122,162,255,.45);
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji"; background:linear-gradient(180deg, #0b1020, #0e1430 50%, #0b1020); color:var(--text)}
+    .wrap{max-width:1000px; margin:40px auto; padding:0 16px}
+    header{display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:16px}
+    h1{font-size:28px; margin:0 0 2px}
+    .sub{color:var(--muted); font-size:14px}
+    .controls{display:grid; grid-template-columns:1fr minmax(160px, 220px) 120px; gap:10px; width:100%;}
+    .card{background:var(--card); border:1px solid #1b2246; border-radius:16px; padding:14px 16px; box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    input[type="search"], select, button.refresh{
+      background:var(--card); color:var(--text); border:1px solid #222a57; border-radius:12px; padding:12px 14px; outline:none; transition:.15s box-shadow, .15s border-color;
+    }
+    input[type="search"]:focus, select:focus, button.refresh:focus{ box-shadow:0 0 0 4px var(--ring); border-color:var(--accent)}
+    button.refresh{cursor:pointer}
+    .chip{display:inline-flex; align-items:center; gap:8px; font-size:12px; color:var(--muted)}
+    .chip .dot{width:8px; height:8px; border-radius:999px; background:var(--accent); box-shadow:0 0 0 4px rgba(122,162,255,.2)}
+
+    /* FAQ accordion */
+    .faq{display:grid; gap:10px}
+    details.faq-item{background:var(--card); border:1px solid #1b2246; border-radius:16px; padding:0}
+    details[open]{border-color:#2a3480; box-shadow:0 10px 30px rgba(18,27,70,.35)}
+    .faq-q{list-style:none; position:relative; margin:0; padding:18px 56px 18px 18px; cursor:pointer; user-select:none}
+    .faq-q:hover{background:rgba(255,255,255,.02)}
+    .faq-q .q{font-weight:600; font-size:16px; line-height:1.35}
+    .faq-q .meta{margin-top:4px; font-size:12px; color:var(--muted)}
+    .faq-a{padding:0 18px 18px 18px; color:#d9e3ff}
+    .caret{position:absolute; right:14px; top:50%; transform:translateY(-50%); width:28px; height:28px; display:grid; place-items:center; border-radius:10px; border:1px solid #26306b}
+    .caret svg{transition:transform .2s ease}
+    details[open] .caret svg{transform:rotate(180deg)}
+
+    .empty{padding:24px; text-align:center; color:var(--muted); border:1px dashed #283063; border-radius:14px}
+    .footer{margin-top:22px; display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:12px}
+    .link{color:var(--accent-2); text-decoration:none}
+    .link:hover{text-decoration:underline}
+    .hidden{display:none !important}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Frequently Asked Questions</h1>
+        <div class="sub">This page auto-updates from a Google Sheet.
+          <span class="chip"><span class="dot"></span> Live</span>
+        </div>
+      </div>
+      <div class="controls">
+        <input id="search" class="card" type="search" placeholder="Search questions or answers…" autocomplete="off" />
+        <select id="category" class="card"></select>
+        <button id="refresh" class="refresh">Refresh</button>
+      </div>
+    </header>
+
+    <div id="faq" class="faq"></div>
+
+    <div class="footer">
+      <div>Last updated: <span id="lastUpdated">—</span></div>
+      <a id="sheetLink" class="link" href="#" target="_blank" rel="noopener">View source sheet</a>
+    </div>
+  </div>
+
+  <script>
+    const SHEET_ID = "1tiEaktF_iAvT9DvWrzpUZYis2z2Tz4Y2nNytVCuEUwY";
+    const SHEET_GID = "0";
+    const AUTO_REFRESH_MS = 0;
+
+    let COLS = {
+      question: 0,
+      answer: 1,
+      category: 2,
+      order: 3,
+      published: 4
+    };
+
+    const $faq = document.getElementById('faq');
+    const $search = document.getElementById('search');
+    const $category = document.getElementById('category');
+    const $refresh = document.getElementById('refresh');
+    const $lastUpdated = document.getElementById('lastUpdated');
+    const $sheetLink = document.getElementById('sheetLink');
+
+    function gvizUrl(sheetId, gid){
+      return `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?gid=${encodeURIComponent(gid)}&tqx=out:json`;
+    }
+
+    function parseGViz(text){
+      const json = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}')+1));
+      return json;
+    }
+
+    function autoDetectCols(json){
+      const labels = (json.table.cols || []).map(c => (c.label || '').trim().toLowerCase());
+      const get = (aliases, fallback) => {
+        for(let i=0;i<labels.length;i++){
+          const l = labels[i];
+          if(!l) continue;
+          for(const a of aliases){ if(l === a) return i; }
+        }
+        return fallback;
+      };
+      return {
+        question: get(['question','faq question','q'], COLS.question),
+        answer: get(['answer','a','response'], COLS.answer),
+        category: get(['category','cat','tag','group','section','topic'], COLS.category),
+        order: get(['order','sort','rank','weight','position','priority'], COLS.order),
+        published: get(['published','publish','visible','show','active','public','enabled'], COLS.published)
+      };
+    }
+
+    function rowsFromGViz(json){
+      return (json.table.rows || []).map(r => (r.c || []).map(c => (c && c.v !== null && c.v !== undefined) ? c.v : ""));
+    }
+
+    const ALLOWED_TAGS = new Set(['A','B','I','EM','STRONG','U','P','BR','UL','OL','LI','CODE','PRE','SPAN']);
+    const ALLOWED_ATTRS = { A: new Set(['href','target','rel']), SPAN: new Set(['style']) };
+
+    function sanitize(html){
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const walker = document.createTreeWalker(wrapper, NodeFilter.SHOW_ELEMENT, null);
+      const toRemove = [];
+      while(walker.nextNode()){
+        const el = walker.currentNode;
+        const tag = el.tagName;
+        if(!ALLOWED_TAGS.has(tag)){
+          toRemove.push(el);
+          continue;
+        }
+        [...el.attributes].forEach(attr => {
+          const name = attr.name.toLowerCase();
+          const allowed = (ALLOWED_ATTRS[tag] && ALLOWED_ATTRS[tag].has(name)) || false;
+          if(!allowed){ el.removeAttribute(attr.name); return; }
+          if(tag === 'A' && name === 'href'){
+            const href = el.getAttribute('href') || '';
+            if(!/^https?:\/\//i.test(href) && !/^mailto:/i.test(href)){
+              el.removeAttribute('href');
+            } else {
+              el.setAttribute('target','_blank');
+              el.setAttribute('rel','noopener');
+            }
+          }
+        });
+      }
+      toRemove.forEach(n => n.replaceWith(document.createTextNode(n.textContent || '')));
+      return wrapper.innerHTML;
+    }
+
+    function renderEmpty(msg){
+      $faq.innerHTML = `<div class="empty">${msg}</div>`;
+    }
+
+    function makeFaqItem(item){
+      const details = document.createElement('details');
+      details.className = 'faq-item';
+      const summary = document.createElement('summary');
+      summary.className = 'faq-q';
+      const q = document.createElement('div');
+      q.className = 'q';
+      q.textContent = item.question;
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = item.category ? `Category: ${item.category}` : '';
+      const caret = document.createElement('div');
+      caret.className = 'caret';
+      caret.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      summary.appendChild(q); summary.appendChild(meta); summary.appendChild(caret);
+      const answer = document.createElement('div');
+      answer.className = 'faq-a';
+      answer.innerHTML = sanitize(item.answerHtml);
+      details.appendChild(summary);
+      details.appendChild(answer);
+      return details;
+    }
+
+    function renderFaq(list){
+      if(!list.length){ renderEmpty('No FAQs found. Try clearing filters or check the "Published" column.'); return; }
+      $faq.innerHTML = '';
+      list.forEach(item => $faq.appendChild(makeFaqItem(item)));
+    }
+
+    function renderCategories(items){
+      const cats = Array.from(new Set(items.map(x => (x.category||'').trim()).filter(Boolean))).sort((a,b)=>a.localeCompare(b));
+      $category.innerHTML = '';
+      const all = document.createElement('option'); all.value = ''; all.textContent = 'All categories';
+      $category.appendChild(all);
+      cats.forEach(c => { const o=document.createElement('option'); o.value=c; o.textContent=c; $category.appendChild(o); });
+    }
+
+    let allItems = [];
+
+    function filterItems(){
+      const q = $search.value.trim().toLowerCase();
+      const cat = $category.value;
+      const res = allItems.filter(item => {
+        const inCat = !cat || (item.category === cat);
+        const inText = !q || (item.qSearch.includes(q) || item.aSearch.includes(q));
+        return inCat && inText;
+      });
+      renderFaq(res);
+    }
+
+    $search.addEventListener('input', filterItems);
+    $category.addEventListener('change', filterItems);
+    $refresh.addEventListener('click', () => load(true));
+
+    function toBool(v){
+      if(v === true) return true;
+      if(v === false) return false;
+      const s = String(v).trim().toLowerCase();
+      if(!s) return true;
+      const truthy = new Set(['true','yes','y','1','✓','✔','published','show','on']);
+      const falsy  = new Set(['false','no','n','0','✗','✕','x','hide','off']);
+      if(truthy.has(s)) return true;
+      if(falsy.has(s)) return false;
+      return true;
+    }
+
+    async function load(force=false){
+      try{
+        const url = gvizUrl(SHEET_ID, SHEET_GID);
+        $sheetLink.href = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=${SHEET_GID}`;
+        const res = await fetch(url, { cache: force ? 'reload' : 'default' });
+        if(!res.ok) throw new Error('Failed to fetch sheet');
+        const text = await res.text();
+        const json = parseGViz(text);
+        COLS = autoDetectCols(json);
+        const rows = rowsFromGViz(json);
+        const items = rows
+          .filter(r => r.length && (typeof r[COLS.question] === 'string' && r[COLS.question].trim().length))
+          .map(r => ({
+            question: String(r[COLS.question] || '').trim(),
+            answerHtml: String(r[COLS.answer] || '').trim().replace(/\n/g,'<br>'),
+            category: String(r[COLS.category] || '').trim(),
+            order: Number(r[COLS.order] || 0),
+            published: toBool(r[COLS.published])
+          }))
+          .filter(x => x.published)
+          .sort((a,b) => a.order - b.order || a.question.localeCompare(b.question));
+        items.forEach(x => { x.qSearch = x.question.toLowerCase(); x.aSearch = x.answerHtml.toLowerCase().replace(/<[^>]+>/g,' '); });
+        allItems = items;
+        renderCategories(allItems);
+        filterItems();
+        $lastUpdated.textContent = new Date().toLocaleString();
+        console.log('[FAQ] Loaded rows:', rows.length, 'Displayed items:', items.length, 'COLS:', COLS);
+      } catch(err){
+        console.error(err);
+        renderEmpty('Could not load FAQs from the Google Sheet. Check sharing settings and IDs.');
+      }
+    }
+
+    load();
+    if(AUTO_REFRESH_MS > 0){ setInterval(()=>load(true), AUTO_REFRESH_MS); }
+  </script>
+</body>
+</html>

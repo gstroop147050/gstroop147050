@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FAQ</title>
+  <link rel="stylesheet" href="https://gstroop147050.org/assets/css/main.css">
+</head>
+<body>
+  <div class="faq-container">
+    <h1>Frequently Asked Questions</h1>
+    <button id="refresh">Refresh</button>
+    <div id="faq"></div>
+  </div>
+
+  <script>
+    const SHEET_ID = "1tiEaktF_iAvT9DvWrzpUZYis2z2Tz4Y2nNytVCuEUwY";
+    const GID = "0";
+    const QUERY_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?gid=${GID}&tqx=out:json`;
+
+    async function loadFAQs() {
+      try {
+        const response = await fetch(QUERY_URL);
+        const text = await response.text();
+        const json = JSON.parse(text.substr(47).slice(0, -2));
+
+        const data = json.table.rows.map(r => r.c.map(c => (c ? c.v : "")));
+        const headers = json.table.cols.map(c => c.label.trim().toLowerCase());
+
+        const colIndex = {
+          question: headers.indexOf("question"),
+          answer: headers.indexOf("answer"),
+          category: headers.indexOf("category"),
+          order: headers.indexOf("order"),
+          published: headers.indexOf("published")
+        };
+
+        const faqDiv = document.getElementById("faq");
+        faqDiv.innerHTML = "";
+
+        let items = data.filter(row => {
+          const pub = row[colIndex.published];
+          return !pub || /^(true|yes|1|y)$/i.test(pub);
+        });
+
+        if (colIndex.order >= 0) {
+          items.sort((a, b) => (a[colIndex.order] || 0) - (b[colIndex.order] || 0));
+        }
+
+        items.forEach(row => {
+          const q = row[colIndex.question];
+          const a = row[colIndex.answer];
+          const c = row[colIndex.category];
+
+          if (q && a) {
+            const section = document.createElement("div");
+            section.className = "faq-item";
+
+            const questionEl = document.createElement("h2");
+            questionEl.textContent = q;
+
+            const answerEl = document.createElement("p");
+            answerEl.textContent = a;
+
+            section.appendChild(questionEl);
+            section.appendChild(answerEl);
+
+            if (c) {
+              const catEl = document.createElement("small");
+              catEl.textContent = c;
+              section.appendChild(catEl);
+            }
+
+            faqDiv.appendChild(section);
+          }
+        });
+
+        console.log(`Loaded rows: ${data.length} • Displayed items: ${items.length}`);
+      } catch (err) {
+        console.error("Error loading FAQs", err);
+      }
+    }
+
+    document.getElementById("refresh").addEventListener("click", loadFAQs);
+    loadFAQs();
+  </script>
+</body>
+</html>
